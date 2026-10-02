@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+_out.txt
+raw_*.json
+demo_activity.csv
