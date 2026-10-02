@@ -1,5 +1,7 @@
 __pycache__/
 *.pyc
-_out.txt
+_out*.txt
+_o.txt
 raw_*.json
 demo_activity.csv
+_leak_demo.py
