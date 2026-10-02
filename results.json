@@ -1,0 +1,33 @@
+{
+ "host": "Windows 11, Python 3.13, stdlib only (numpy/BLAS fails in subprocess here)",
+ "method": "SMILES -> 10 descriptors + 64 selected Morgan bits -> logistic regression, all stdlib",
+ "egfr_chembl203_ic50": {
+  "rows": 2144,
+  "unique_molecules": 1451,
+  "documents": 118,
+  "assays": 206,
+  "row_random": 0.888,
+  "test_rows_sharing_a_molecule": 0.353,
+  "unseen_molecule": 0.889,
+  "unseen_document": 0.842,
+  "post_2000": 0.86,
+  "unseen_assay": 0.856,
+  "label_permute_control": 0.51,
+  "verdict": "PASS"
+ },
+ "herg_chembl240_ic50": {
+  "rows": 2275,
+  "unique_molecules": 1750,
+  "documents": 244,
+  "assays": 273,
+  "row_random": 0.764,
+  "test_rows_sharing_a_molecule": 0.272,
+  "unseen_molecule": 0.728,
+  "unseen_document": 0.622,
+  "post_2000": 0.571,
+  "unseen_assay": 0.71,
+  "label_permute_control": 0.505,
+  "verdict": "REJECT",
+  "attribution": "换论文 0.622 < 0.70；换年代 0.571 < 0.65"
+ }
+}

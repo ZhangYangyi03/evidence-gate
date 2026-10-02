@@ -19,55 +19,74 @@ EDA 那套骨架（search / prove / perturb / cover）原样保留，只是把"�
 
 判决只与"分数是怎么来的"有关，与分数高低无关。
 
-## 真数据实跑（2026-10-02）
+## 真数据实跑（2026-10-02，两个公共靶点）
 
-ChEMBL 公共数据，靶点 CHEMBL203 (EGFR)，IC50，pChEMBL >= 6 为正类。
-2144 条活性记录 / 1451 个不同分子 / 118 篇来源文献，SMILES 全在本机解析
-（`chemio.py`，纯标准库：描述符 + 2048 位 Morgan 指纹，2144 条 0.5 秒）。
-模型是逻辑回归，64 位指纹 + 10 个描述符，无第三方依赖。
+ChEMBL 公共活性数据，同一套模型（10 个描述符 + 64 位 Morgan 指纹 -> 逻辑回归，
+全部标准库实现）。分数由谁而来，看的是**换一个维度掏空测试集之后还在不在**。
 
-    划分方式               AUC     测试行与训练集共享分子的比例
-    row-random（文献默认） 0.887   35.3%   <- 三分之一测试行是见过的分子
-    unseen-molecule        0.893   0%
-    unseen-document        0.834   0%
-    post-2000 held out     0.847   0%
-    阴性对照 标签置换      0.507   （管线可信，因为它塌了）
+靶点 A  EGFR (CHEMBL203)，IC50，2144 条 / 1451 个分子 / 118 篇文献 / 206 个 assay
 
-结论：这条主张真的迁移。换分子、换论文、换年代，AUC 只掉 0.04-0.05，
-不是记忆。**同一套四关，在合成数据上曾经把 AUC 0.703 的那条主张驳掉了**
-（它的分数骑在化学骨架身份上，换划分塌 0.10），而放过了 AUC 0.589 的那条。
-门排的是可信度，不是分数——这就是两条都要有的原因。
+    划分           AUC     说明
+    row-random     0.888   35.3% 的测试行，训练时见过同一分子的另一条测量
+    unseen-molecule 0.889
+    unseen-document 0.842
+    post-2000       0.860
+    unseen-assay    0.856
+    阴性对照        0.510   （标签置换，管线可信因为它塌了）
+    -> PASS
+
+靶点 B  hERG (CHEMBL240)，IC50，2275 条 / 1750 个分子 / 244 篇文献 / 273 个 assay
+
+    划分           AUC     说明
+    row-random      0.764   27.2% 的测试行与训练集共享分子
+    unseen-molecule 0.728
+    unseen-document 0.622   <- 掉出 0.70
+    post-2000       0.571   <- 掉到接近抛硬币
+    unseen-assay    0.710
+    阴性对照         0.505
+    -> REJECT：换论文 0.622 < 0.70；换年代 0.571 < 0.65
+
+同一个模型，同一个流程，一个通过一个驳回。**排的是可信度，不是分数。**
+hERG 那条在文献默认的随机划分下能报 0.764，看着是个能用的模型；四关走完才知道，
+它的分数有相当一部分来自"记住了这 244 篇论文里的化合物"，换成没见过的年份直接掉到 0.571。
+
+另外两个演示，用来确认门真的会响：
+
+    leak_demo.py       1-NN 最近邻（会背答案的模型）；随机划分 0.809，未见分子 0.774
+    confound_demo.py   指纹 + assay 批次身份当特征；随机 0.901，未见 assay 0.851
+    gate.py            合成数据，自带一条故意泄露的主张：AUC 0.703 被驳回，0.589 通过
 
 ## 跑
 
-    pip install -r requirements.txt        # 只有一个依赖，见下
-    python fetch_chembl.py                 # 抓公共数据（纯 urllib）
-    python gates.py                        # 四关，真数据
-    python gate.py                         # 四关，合成对照（A 应 REJECT，B 应 PASS）
+    python gates.py                                  # 默认 EGFR
+    python gates.py data/herg_chembl240_ic50.csv     # hERG
+    python leak_demo.py ; python confound_demo.py ; python gate.py
 
-依赖：无。标准库跑完全部。
+依赖：无。标准库跑完全部，单靶点一次 13-17 秒。
 
 ## 为什么不用 RDKit / numpy
 
 这台机器上子进程里 numpy 的 BLAS 会分配内存失败
 （`OpenBLAS error: Memory allocation still failed after 10 retries`），
-`numpy.random` 直接 `MemoryError`。所以化学解析、指纹、逻辑回归、AUC
-全部用标准库重写了。这不是清高，是被环境逼的，也让整个仓库可以拷到任何地方直接跑。
+`numpy.random` 直接 `MemoryError`。所以 SMILES 解析、Morgan 指纹、逻辑回归、AUC
+全部用标准库重写了。这不是清高，是被环境逼的，也让整个仓库能拷到任何机器上直接跑。
 
 ## 文件
 
-    chemio.py            SMILES -> 原子/邻接，描述符，Morgan 指纹，Tanimoto
-    gates.py             四关主程序（真数据）
-    gate.py              合成对照（含故意泄露的主张，用来验证门真的会响）
-    fetch_chembl.py      ChEMBL 活性数据抓取
-    data/                egfr_chembl203_ic50.csv（2144 行，含 SMILES 与来源文献）
+    chemio.py            SMILES -> 原子/邻接，10 个描述符，2048 位 Morgan 指纹，Tanimoto
+    gates.py             四关主程序（真数据，任意 ChEMBL CSV）
+    gate.py              合成对照（含故意泄露的主张，确认门会响）
+    leak_demo.py         会背答案的模型 + 四关
+    confound_demo.py     批次身份当特征的泄露
+    fetch_chembl.py      ChEMBL 活性抓取（纯 urllib）
+    results.json         两次真跑的完整数字
+    data/                EGFR 与 hERG 活性 CSV（含 SMILES 与来源文献）
 
 ## 这层为什么该存在
 
-生成层已经拥挤：分子生成、靶点排序、虚拟筛选，人人都在做，比的是湿实验、临床
-数据和资本。验证层是空的：没人回答"这个分数可不可信、依据是什么、换一个测试集还成不成立"。
-而这正是 EDA 里已经做过的事——覆盖率数字好看但接线错了，本仓库就是那套检查搬到
-预测型主张上。
+生成层已经拥挤：分子生成、靶点排序、虚拟筛选，人人都在做。验证层是空的：
+没人回答"这个分数可不可信、依据是什么、换一个测试集还成不成立"。
+这正是 EDA 里已经做过的事——覆盖率数字好看但接线错了。
 
 这里做的是**裁判**，不是**加速器**。它不告诉你哪个分子好，它告诉你哪个结论可以先信。
 

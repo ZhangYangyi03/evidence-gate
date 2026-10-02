@@ -1,6 +1,6 @@
 # gates.py -- 四关调用四条不同的划分，每关都把"泄露"与"迁移"分开量。
 # 这里不做打分，只做裁判：同一条预测主张，换划分方式后还站不站得住。
-import json, math, random, sys, csv
+import json, math, os, random, sys, csv
 from collections import Counter
 
 sys.path.insert(0, ".")
@@ -92,12 +92,13 @@ def label_permute_control(rows, tr, te, K=64, seed=5):
     th = fit(Rtr, [pm[id(r)] for r in tr])
     return round(auc(th, Rte, [pm[id(r)] for r in te]), 3)
 
-def main(csv_path="data/egfr_chembl203_ic50.csv"):
+def main(csv_path="data/egfr_chembl203_ic50.csv", target_label=None):
     rows = load_csv(csv_path)
-    rep = {"claim": "SMILES -> EGFR 抑制活性 (pChEMBL >= 6)，AUC", "dataset":
-           {"rows": len(rows), "unique_molecules": len(set(r["id"] for r in rows)),
+    label = target_label or os.path.splitext(os.path.basename(csv_path))[0]
+    rep = {"claim": f"SMILES -> 活性 (pChEMBL >= 6)，AUC | {label}", "dataset":
+           {"csv": csv_path, "rows": len(rows), "unique_molecules": len(set(r["id"] for r in rows)),
             "documents": len(set(r["doc"] for r in rows)),
-            "target": "CHEMBL203 (EGFR), IC50"}, "gates": {}}
+            "assays": len(set(r["assay"] for r in rows)), "label": label}, "gates": {}}
 
     tr, te = split_rows(rows); a, leak = score_split(rows, tr, te)
     rep["gates"]["G1_reproduce"] = {"split": "row-random", "auc": round(a, 3),
@@ -109,11 +110,21 @@ def main(csv_path="data/egfr_chembl203_ic50.csv"):
     rep["gates"]["G3_unseen_paper"] = {"split": "unseen-document", "auc": round(c, 3)}
     d2, _ = score_split(rows, *split_group(rows, lambda r: (int(r["year"]) >= 2000) if r["year"] else 0))
     rep["gates"]["G4_temporal"] = {"split": "post-2000 held out", "auc": round(d2, 3)}
+    e, _ = score_split(rows, *split_group(rows, lambda r: r["assay"]))
+    rep["gates"]["G5_unseen_assay"] = {"split": "unseen-assay", "auc": round(e, 3),
+        "note": "assay 身份是批次效应的入口；掉得多说明分数里有一部分是实验室批次，不是化学"}
     neg = label_permute_control(rows, tr3, te3)
     rep["gates"]["G0_negative_control"] = {"label_permute_auc": neg,
         "ok": abs(neg - 0.5) < 0.06, "note": "不塌说明管线是坏的"}
     rep["gap_random_vs_paper"] = round(a - c, 3)
-    rep["verdict"] = "PASS" if (abs(neg - 0.5) < 0.06 and c >= 0.70) else "REJECT"
+    rep["gap_random_vs_temporal"] = round(a - d2, 3)
+    fails = []
+    if abs(neg - 0.5) >= 0.06: fails.append("G0 阴性对照没塌到 0.5，管线本身不可信")
+    if c < 0.70: fails.append(f"G3 换论文 AUC {round(c,3)} < 0.70（分数没迁移出这批文献）")
+    if d2 < 0.65: fails.append(f"G4 换年代 AUC {round(d2,3)} < 0.65（配方换了年份就失效）")
+    if a - c >= 0.15: fails.append(f"G1->G3 落差 {round(a-c,3)} >= 0.15（随机划分的分数主要来自记住这批数据）")
+    rep["verdict"] = "PASS" if not fails else "REJECT"
+    rep["attribution"] = "；".join(fails) if fails else "四关全过；分数在换分子/换论文/换年代/换批次后都站得住"
     print(json.dumps(rep, ensure_ascii=False, indent=1))
 
 if __name__ == "__main__":
