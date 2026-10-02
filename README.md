@@ -19,50 +19,59 @@ EDA 那套骨架（search / prove / perturb / cover）原样保留，只是把"�
 
 判决只与"分数是怎么来的"有关，与分数高低无关。
 
-## 真数据实跑（2026-10-02，两个公共靶点）
+## 真数据实跑（2026-10-02，两个公共靶点，数字可复现）
 
 ChEMBL 公共活性数据，同一套模型（10 个描述符 + 64 位 Morgan 指纹 -> 逻辑回归，
-全部标准库实现）。分数由谁而来，看的是**换一个维度掏空测试集之后还在不在**。
+全部标准库实现，见 chemio.py）。一次 13 秒。同一份数据连跑三次，数字逐位一致。
 
-靶点 A  EGFR (CHEMBL203)，IC50，2144 条 / 1451 个分子 / 118 篇文献 / 206 个 assay
+靶点 A  EGFR (CHEMBL203)，IC50 — 2144 条 / 1451 个分子 / 118 篇文献 / 206 个 assay
 
-    划分           AUC     说明
-    row-random     0.888   35.3% 的测试行，训练时见过同一分子的另一条测量
-    unseen-molecule 0.889
-    unseen-document 0.842
-    post-2000       0.860
-    unseen-assay    0.856
-    阴性对照        0.510   （标签置换，管线可信因为它塌了）
-    -> PASS
+    关卡                     划分              AUC
+    G1  复现门               row-random        0.884   其中 35.3% 的测试行，训练时见过同一分子
+    G2  换分子               unseen-molecule   0.890
+    G3  换论文               unseen-document   0.843
+    G4  换年代               post-2000 留出    0.785
+    G5  换批次               unseen-assay      0.854
+    G0  阴性对照             标签置换          0.501   （塌了，所以管线可信）
+    -> PASS：分数在换分子/换论文/换年代/换批次后都站得住
 
-靶点 B  hERG (CHEMBL240)，IC50，2275 条 / 1750 个分子 / 244 篇文献 / 273 个 assay
+靶点 B  hERG (CHEMBL240)，IC50 — 2275 条 / 1750 个分子 / 244 篇文献 / 273 个 assay
 
-    划分           AUC     说明
-    row-random      0.764   27.2% 的测试行与训练集共享分子
-    unseen-molecule 0.728
-    unseen-document 0.622   <- 掉出 0.70
-    post-2000       0.571   <- 掉到接近抛硬币
-    unseen-assay    0.710
-    阴性对照         0.505
-    -> REJECT：换论文 0.622 < 0.70；换年代 0.571 < 0.65
+    关卡                     划分              AUC
+    G1  复现门               row-random        0.749   27.2% 的测试行与训练集共享分子
+    G2  换分子               unseen-molecule   0.709
+    G3  换论文               unseen-document   0.645   <- 掉出 0.70
+    G4  换年代               post-2000 留出    0.453   <- 掉到抛硬币
+    G5  换批次               unseen-assay      0.702
+    G0  阴性对照             标签置换          0.511
+    -> REJECT：换论文 0.645 < 0.70；换年代 0.453 < 0.65
 
-同一个模型，同一个流程，一个通过一个驳回。**排的是可信度，不是分数。**
-hERG 那条在文献默认的随机划分下能报 0.764，看着是个能用的模型；四关走完才知道，
-它的分数有相当一部分来自"记住了这 244 篇论文里的化合物"，换成没见过的年份直接掉到 0.571。
+同一个模型、同一个流程、同一份代码：一个通过，一个驳回。
 
-另外两个演示，用来确认门真的会响：
+hERG 这条在文献默认的随机划分下报 0.749，看着是个能用的模型。四关走完才知道，
+它的分数有相当一部分来自"记住了这 244 篇论文里的化合物"——换成没见过的年份
+直接掉到 0.453，比抛硬币还差。**排的是可信度，不是分数。** 这正是生成层自己
+不会说、也不会知道的那句话。
 
-    leak_demo.py       1-NN 最近邻（会背答案的模型）；随机划分 0.809，未见分子 0.774
-    confound_demo.py   指纹 + assay 批次身份当特征；随机 0.901，未见 assay 0.851
-    gate.py            合成数据，自带一条故意泄露的主张：AUC 0.703 被驳回，0.589 通过
+### 这一步里被门抓住的，是我自己的 bug
+
+第一版 gates.py 里，时间划分用 `shuffle` 取一半，而年份只有 True/False 两个 key，
+于是"哪一半当测试集"由随机数决定，同一份数据两次运行 AUC 不同（0.464 / 0.571）。
+指纹里的 `hash()` 也是同一个病：Python 对 str 每进程加盐，Morgan 指纹每次都变。
+改成 hold_out_true 与 FNV-1a 稳定哈希之后，三次连跑逐位一致。**G1 复现门
+抓的第一条主张，是本仓库自己的。** 如果它连自己都不查，它凭什么查别人的。
 
 ## 跑
 
-    python gates.py                                  # 默认 EGFR
-    python gates.py data/herg_chembl240_ic50.csv     # hERG
-    python leak_demo.py ; python confound_demo.py ; python gate.py
+    python gates.py                                   # 默认 EGFR
+    python gates.py data/herg_chembl240_ic50.csv      # hERG
+    python gate.py       ; python leak_demo.py ; python confound_demo.py
 
-依赖：无。标准库跑完全部，单靶点一次 13-17 秒。
+    leak_demo.py       1-NN 最近邻（会背答案的模型）；随机 0.809 / 未见分子 0.774
+    confound_demo.py   指纹 + assay 批次身份当特征；随机 0.901 / 未见 assay 0.851
+    gate.py            合成数据，自带一条故意泄露的主张：0.703 被驳回，0.589 通过
+
+依赖：无。标准库跑完全部。results.json 存着上面两次真跑的完整数字。
 
 ## 为什么不用 RDKit / numpy
 
@@ -77,7 +86,7 @@ hERG 那条在文献默认的随机划分下能报 0.764，看着是个能用的
     gates.py             四关主程序（真数据，任意 ChEMBL CSV）
     gate.py              合成对照（含故意泄露的主张，确认门会响）
     leak_demo.py         会背答案的模型 + 四关
-    confound_demo.py     批次身份当特征的泄露
+    confound_demo.py    批次身份当特征的泄露
     fetch_chembl.py      ChEMBL 活性抓取（纯 urllib）
     results.json         两次真跑的完整数字
     data/                EGFR 与 hERG 活性 CSV（含 SMILES 与来源文献）

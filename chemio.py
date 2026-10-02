@@ -52,6 +52,14 @@ def parse(smiles):
     if not atoms: raise ValueError("empty")
     return atoms, adj
 
+def stable_hash(vals):
+    """跨进程稳定的哈希：FNV-1a over repr()。内建 hash() 对 str 每进程加盐，
+    指纹会随进程变，同一条主张两次运行给出不同 AUC —— 第一关就是抓这个的。"""
+    h = 0xcbf29ce484222325
+    for ch in repr(vals):
+        h = ((h ^ ord(ch)) * 0x100000001b3) & 0xFFFFFFFFFFFFFFFF
+    return h & 0xFFFFFFFF
+
 def inchi_key_like(atoms, adj):
     """没有 RDKit，用一个稳定的规范序近似：度/元素/环基分层 BFS 后的哈希。"""
     h=[]
@@ -82,7 +90,8 @@ def morgan_bits(atoms, adj, radius=2, nbits=2048):
     init=[]
     for k in range(len(atoms)):
         deg=len(adj.get(k,{}))
-        init.append(hash((atoms[k][0], deg, atoms[k][1], sum(1 for b in adj.get(k,{}).values() if b==2))) & 0xffffffff)
+        init.append(stable_hash((atoms[k][0], deg, atoms[k][1],
+                                 sum(1 for b in adj.get(k,{}).values() if b==2))))
     cur=init[:]
     bits=0
     for k in range(len(atoms)): bits |= 1 << (cur[k] % nbits)
@@ -90,7 +99,7 @@ def morgan_bits(atoms, adj, radius=2, nbits=2048):
         nxt=[]
         for k in range(len(atoms)):
             nbrs=sorted(cur[j] for j in adj.get(k,{}))
-            nxt.append(hash((cur[k], tuple(nbrs))) & 0xffffffff)
+            nxt.append(stable_hash((cur[k], tuple(nbrs))))
         cur=nxt
         for k in range(len(atoms)): bits |= 1 << (cur[k] % nbits)
     return bits

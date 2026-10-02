@@ -64,17 +64,17 @@ def auc(th, R, Y):
 def split_rows(rows, seed=0, frac=0.5):
     r = list(rows); random.Random(seed).shuffle(r); c = int(len(r) * frac); return r[:c], r[c:]
 
-def split_group(rows, key, seed=0, frac=0.5, invert=False):
-    ks = sorted(set(key(r) for r in rows))
-    if invert:
-        ks = [k for k in ks if key_ge2000(k)]
-    random.Random(seed).shuffle(ks)
-    te = set(ks[:max(1, int(len(ks) * frac))])
+def split_group(rows, key, seed=0, frac=0.5, hold_out_true=False):
+    """按 key 分组划分。hold_out_true=True 时，把 key 为真的那一组整体留作测试集。
+    时间划分必须用这个：只有 True/False 两个 key，靠 shuffle 取一半等于抛硬币，
+    同一份数据两次运行会给出不同的 AUC —— 那正好是这一层要消灭的东西。"""
+    ks = sorted(set(key(r) for r in rows), key=lambda k: str(k))
+    if hold_out_true:
+        te = set(k for k in ks if k)
+    else:
+        random.Random(seed).shuffle(ks)
+        te = set(ks[:max(1, int(len(ks) * frac))])
     return [r for r in rows if key(r) not in te], [r for r in rows if key(r) in te]
-
-def key_ge2000(k):
-    try: return int(k) >= 2000
-    except Exception: return False
 
 def score_split(rows, tr, te, K=64):
     Rtr, Rte = featurize(tr, te, K)
@@ -108,7 +108,8 @@ def main(csv_path="data/egfr_chembl203_ic50.csv", target_label=None):
     rep["gates"]["G2_unseen_molecule"] = {"split": "unseen-molecule", "auc": round(b, 3)}
     tr3, te3 = split_group(rows, lambda r: r["doc"]); c, _ = score_split(rows, tr3, te3)
     rep["gates"]["G3_unseen_paper"] = {"split": "unseen-document", "auc": round(c, 3)}
-    d2, _ = score_split(rows, *split_group(rows, lambda r: (int(r["year"]) >= 2000) if r["year"] else 0))
+    d2, _ = score_split(rows, *split_group(rows, lambda r: bool(r["year"]) and int(r["year"]) >= 2000,
+                                              hold_out_true=True))
     rep["gates"]["G4_temporal"] = {"split": "post-2000 held out", "auc": round(d2, 3)}
     e, _ = score_split(rows, *split_group(rows, lambda r: r["assay"]))
     rep["gates"]["G5_unseen_assay"] = {"split": "unseen-assay", "auc": round(e, 3),
