@@ -1,0 +1,12 @@
+cff-version: 1.2.0
+message: "If you use this work, please cite it as below."
+title: "evidence-gate: a referee for the generation layer"
+abstract: "The EDA skeleton (search / prove / perturb / cover) pointed at predictive claims, with reproducible perturbations instead of wet-lab oracles: label permutation as a negative control, split by molecule / document / year / assay. One model and one pipeline pass on EGFR and are rejected on hERG (post-2000 AUC 0.453)."
+authors:
+  - family-names: Zhang
+    given-names: Yangyi
+    affiliation: Georgetown University
+repository-code: "https://github.com/ZhangYangyi03/evidence-gate"
+license: Apache-2.0
+type: software
+keywords: [evaluation validity, conformal, chembl, negative control, auc]
