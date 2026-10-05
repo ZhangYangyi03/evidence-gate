@@ -100,3 +100,14 @@ hERG 这条在文献默认的随机划分下报 0.749，看着是个能用的模
 这里做的是**裁判**，不是**加速器**。它不告诉你哪个分子好，它告诉你哪个结论可以先信。
 
 MIT License.
+
+## Related work by the same author
+
+The same claim -- *a number is meaningless until it is shown to survive its own
+verification* -- is made and measured in other domains:
+
+- [autoforge](https://github.com/ZhangYangyi03/autoforge) -- a tool's fitness, until an oracle outside the tool agrees
+- [agentic-eda](https://github.com/ZhangYangyi03/agentic-eda) -- a circuit's area, until equivalence to the reference netlist is proven
+- [debt-verify](https://github.com/ZhangYangyi03/debt-verify) -- a debt clause decision, until it survives the published revision record
+- [tool-market](https://github.com/ZhangYangyi03/tool-market) -- a tool's liveness, until the hash chain says which revision is live
+- [agent-safety-bench](https://github.com/ZhangYangyi03/agent-safety-bench) -- a model's safety compliance, measured rather than assumed
