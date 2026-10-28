@@ -1,0 +1,22 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: The gate must run on the data that ships with it
+        run: python gate.py
+      - name: Two runs must agree bit for bit (G1 reproducibility gate)
+        run: |
+          python gate.py > /tmp/a.txt
+          python gate.py > /tmp/b.txt
+          diff /tmp/a.txt /tmp/b.txt
